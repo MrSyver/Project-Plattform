@@ -1,0 +1,36 @@
+# On-Prem-Pfad: App + SQL Server + ClamAV (Virenscan). Alles ohne Cloud-Abhängigkeit.
+# Cloud-Pfad nutzt stattdessen Azure Container Apps + Azure SQL (siehe deploy/azure/).
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__AppDb: "Server=db;Database=ReportingPlattform;User Id=sa;Password=${DB_PASSWORD};TrustServerCertificate=true"
+      Auth__Mode: "local"
+      Bi__Provider: "PowerBiService"
+      Storage__LocalPath: "/data/files"
+    volumes:
+      - files:/data/files
+    depends_on:
+      - db
+      - clamav
+    restart: unless-stopped
+
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "${DB_PASSWORD}"
+    volumes:
+      - mssql:/var/opt/mssql
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:latest
+    restart: unless-stopped
+
+volumes:
+  files:
+  mssql:
