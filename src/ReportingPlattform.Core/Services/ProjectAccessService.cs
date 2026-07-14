@@ -30,6 +30,10 @@ public sealed class ProjectAccessService
         return u.CanUseEditor && role is ProjectRole.Beitragender or ProjectRole.Owner;
     }
 
+    /// <summary>Mitglieder/ACL verwalten darf nur Admin oder der Projekt-Owner (§ 2.4).</summary>
+    public bool CanManageMembers(UserContext u, ProjectSpace p)
+        => HasRole(u, PlatformRole.Admin) || EffectiveRole(u, p) == ProjectRole.Owner;
+
     /// <summary>Höchste Projektrolle über alle passenden ACL-Einträge (E-Mail bzw. Gruppen-Id).</summary>
     public ProjectRole? EffectiveRole(UserContext u, ProjectSpace p)
     {

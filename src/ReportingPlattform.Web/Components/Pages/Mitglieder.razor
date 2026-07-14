@@ -1,0 +1,195 @@
+@page "/projekt/{ProjektSlug}/mitglieder"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
+@using ReportingPlattform.Core.Ports
+@using ReportingPlattform.Infrastructure.Data
+@inject AppDbContext Db
+@inject ProjectAccessService Access
+@inject EditorPolicy Editors
+@inject IAuditSink Audit
+@inject NavigationManager Nav
+
+<PageTitle>Mitglieder – @(_space?.Name ?? "Projektraum")</PageTitle>
+
+@if (_space is null)
+{
+    <div class="alert alert-warning">Projektraum nicht gefunden oder keine Berechtigung zur Mitgliederverwaltung.</div>
+}
+else
+{
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/projekte">Projekträume</a></li>
+            <li class="breadcrumb-item"><a href="/projekt/@_space.Slug">@_space.Name</a></li>
+            <li class="breadcrumb-item active">Mitglieder</li>
+        </ol>
+    </nav>
+
+    <h1>Mitglieder &amp; Zugriff</h1>
+    <p class="text-muted" style="max-width:640px">
+        Frei kombinierbar: <strong>Security Groups</strong> (AD), <strong>einzelne interne Nutzer</strong>
+        und <strong>externe Gäste</strong> — je mit Rolle im Projektraum. Plattform-Admins sehen immer alles.
+    </p>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger" style="max-width:640px">@_error</div>
+    }
+
+    @if (_space.AccessList.Count == 0)
+    {
+        <div class="alert alert-secondary" style="max-width:640px">
+            Noch keine Einträge — aktuell haben nur Plattform-Admins Zugriff auf diesen Raum.
+        </div>
+    }
+    else
+    {
+        <table class="table" style="max-width:760px">
+            <thead>
+                <tr><th>Typ</th><th>Subjekt</th><th>Rolle</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var e in _space.AccessList.OrderBy(a => a.SubjectType).ThenBy(a => a.Subject))
+                {
+                    <tr>
+                        <td>@TypeLabel(e.SubjectType)</td>
+                        <td><code>@e.Subject</code></td>
+                        <td>@e.Role</td>
+                        <td class="text-end">
+                            <EditForm Model="Dummy" method="post" OnValidSubmit="@(() => RemoveAsync(e.Id))" FormName="@($"del-{e.Id}")">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Entfernen</button>
+                            </EditForm>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <h2 class="h5 mt-4">Mitglied hinzufügen</h2>
+    <EditForm Model="NewMember" method="post" OnValidSubmit="AddAsync" FormName="addMember">
+        <DataAnnotationsValidator />
+        <div class="row g-2" style="max-width:760px">
+            <div class="col-md-3">
+                <InputSelect class="form-select" @bind-Value="NewMember.SubjectType">
+                    <option value="InternalUser">Interner Nutzer</option>
+                    <option value="ExternalGuest">Externer Gast</option>
+                    <option value="SecurityGroup">Security Group</option>
+                </InputSelect>
+            </div>
+            <div class="col-md-4">
+                <InputText class="form-control" placeholder="E-Mail bzw. Gruppen-Id" @bind-Value="NewMember.Subject" />
+            </div>
+            <div class="col-md-3">
+                <InputSelect class="form-select" @bind-Value="NewMember.Role">
+                    <option value="Betrachter">Betrachter</option>
+                    <option value="Beitragender">Beitragende:r</option>
+                    <option value="Owner">Owner</option>
+                </InputSelect>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Hinzufügen</button>
+            </div>
+        </div>
+        <p class="text-muted mt-2" style="font-size:.85rem">
+            Interne Nutzer / Gäste: E-Mail-Adresse · Security Group: Objekt-Id der AD-Gruppe.
+        </p>
+    </EditForm>
+}
+
+@code {
+    [Parameter] public string ProjektSlug { get; set; } = string.Empty;
+    [CascadingParameter] public HttpContext? HttpContext { get; set; }
+    [SupplyParameterFromForm(FormName = "addMember")] public AddMemberModel NewMember { get; set; } = new();
+
+    public object Dummy { get; } = new();
+
+    private ProjectSpace? _space;
+    private string? _error;
+    private string _actor = "unbekannt";
+
+    public class AddMemberModel
+    {
+        [Required] public string SubjectType { get; set; } = "InternalUser";
+        [Required(ErrorMessage = "E-Mail bzw. Gruppen-Id angeben"), MaxLength(320)]
+        public string Subject { get; set; } = string.Empty;
+        [Required] public string Role { get; set; } = "Betrachter";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = HttpContext?.User ?? throw new InvalidOperationException("Kein HttpContext.");
+        var ctx = UserContextFactory.From(user, Editors);
+        _actor = user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name ?? "unbekannt";
+
+        var space = await Db.ProjectSpaces
+            .Include(p => p.AccessList)
+            .FirstOrDefaultAsync(p => p.Slug == ProjektSlug);
+
+        // Nur Admin oder Projekt-Owner dürfen die Mitgliederverwaltung sehen (§ 2.4).
+        _space = space is not null && Access.CanManageMembers(ctx, space) ? space : null;
+    }
+
+    private async Task AddAsync()
+    {
+        if (_space is null) return;
+
+        var type = Enum.TryParse<AccessSubjectType>(NewMember.SubjectType, out var t) ? t : AccessSubjectType.InternalUser;
+        var role = Enum.TryParse<ProjectRole>(NewMember.Role, out var r) ? r : ProjectRole.Betrachter;
+
+        // E-Mails normalisieren; Gruppen-Ids unverändert übernehmen.
+        var subject = type == AccessSubjectType.SecurityGroup
+            ? NewMember.Subject.Trim()
+            : NewMember.Subject.Trim().ToLowerInvariant();
+
+        if (type != AccessSubjectType.SecurityGroup && !subject.Contains('@'))
+        {
+            _error = "Für Nutzer und Gäste bitte eine E-Mail-Adresse angeben.";
+            return;
+        }
+
+        if (_space.AccessList.Any(e => e.SubjectType == type && string.Equals(e.Subject, subject, StringComparison.OrdinalIgnoreCase)))
+        {
+            _error = "Dieser Eintrag existiert bereits.";
+            return;
+        }
+
+        // Explizites Add (client-generierter Guid-Key, siehe Kontext-Übergabe).
+        Db.AccessEntries.Add(new AccessEntry
+        {
+            ProjectSpaceId = _space.Id,
+            SubjectType = type,
+            Subject = subject,
+            Role = role,
+        });
+        await Db.SaveChangesAsync();
+        await Audit.WriteAsync(new AuditEvent(DateTimeOffset.UtcNow, _actor, "member.add",
+            $"project:{_space.Slug}", $"{type}:{subject}={role}"));
+
+        Nav.NavigateTo($"/projekt/{_space.Slug}/mitglieder", forceLoad: true);
+    }
+
+    private async Task RemoveAsync(Guid entryId)
+    {
+        if (_space is null) return;
+        var entry = _space.AccessList.FirstOrDefault(e => e.Id == entryId);
+        if (entry is not null)
+        {
+            Db.Remove(entry);
+            await Db.SaveChangesAsync();
+            await Audit.WriteAsync(new AuditEvent(DateTimeOffset.UtcNow, _actor, "member.remove",
+                $"project:{_space.Slug}", $"{entry.SubjectType}:{entry.Subject}"));
+        }
+        Nav.NavigateTo($"/projekt/{_space.Slug}/mitglieder", forceLoad: true);
+    }
+
+    private static string TypeLabel(AccessSubjectType t) => t switch
+    {
+        AccessSubjectType.SecurityGroup => "Security Group",
+        AccessSubjectType.InternalUser => "Interner Nutzer",
+        AccessSubjectType.ExternalGuest => "Externer Gast",
+        _ => t.ToString(),
+    };
+}

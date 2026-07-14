@@ -23,7 +23,13 @@ else
         </ol>
     </nav>
 
-    <h1>@_space.Name</h1>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1 class="mb-0">@_space.Name</h1>
+        @if (_canManage)
+        {
+            <a class="btn btn-outline-secondary btn-sm" href="/projekt/@_space.Slug/mitglieder">👥 Mitglieder verwalten</a>
+        }
+    </div>
 
     <h2 class="h5 mt-4">Seiten</h2>
     @if (VisiblePages.Count == 0)
@@ -71,6 +77,7 @@ else
 
     private ProjectSpace? _space;
     private bool _canEdit;
+    private bool _canManage;
 
     private List<Page> VisiblePages => _space is null
         ? new()
@@ -95,6 +102,7 @@ else
         if (space is null || !Access.CanView(ctx, space)) { _space = null; return; }
         _space = space;
         _canEdit = Access.CanEdit(ctx, space);
+        _canManage = Access.CanManageMembers(ctx, space);
     }
 
     private async Task CreatePageAsync()

@@ -90,6 +90,22 @@ public class ProjectAccessServiceTests
     }
 
     [Fact]
+    public void Manage_members_requires_admin_or_owner()
+    {
+        var ownerEntry = new AccessEntry { SubjectType = AccessSubjectType.InternalUser, Subject = "owner@kunde.de", Role = ProjectRole.Owner };
+        var contribEntry = new AccessEntry { SubjectType = AccessSubjectType.InternalUser, Subject = "beitrag@kunde.de", Role = ProjectRole.Beitragender };
+        var space = SpaceWith(ownerEntry, contribEntry);
+
+        var admin = new UserContext("admin@kunde.de", new[] { "Admin" }, None, CanUseEditor: false);
+        var owner = new UserContext("owner@kunde.de", new[] { "Viewer" }, None, CanUseEditor: true);
+        var contributor = new UserContext("beitrag@kunde.de", new[] { "Viewer" }, None, CanUseEditor: true);
+
+        Assert.True(Access.CanManageMembers(admin, space));
+        Assert.True(Access.CanManageMembers(owner, space));
+        Assert.False(Access.CanManageMembers(contributor, space));
+    }
+
+    [Fact]
     public void Highest_role_wins_across_entries()
     {
         var u = new UserContext("x@kunde.de", new[] { "Viewer" }, new[] { "grp-1" }, CanUseEditor: true);
