@@ -1,15 +1,89 @@
 @page "/projekte"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using ReportingPlattform.Infrastructure.Data
+@inject AppDbContext Db
+@inject ProjectAccessService Access
+@inject EditorPolicy Editors
+@inject NavigationManager Nav
 
 <PageTitle>Projekträume</PageTitle>
 
 <h1>Projekträume</h1>
+<p class="text-muted">Du siehst nur Räume, für die du freigeschaltet bist.</p>
 
-<p>
-    Jeder Projektraum hat eigene Seiten, eine eigene Dateibibliothek und eine eigene
-    Zugriffsliste (Security Groups + interne Nutzer + externe Gäste).
-</p>
+@if (_spaces.Count == 0)
+{
+    <div class="alert alert-secondary">Noch keine Projekträume für dich sichtbar.</div>
+}
+else
+{
+    <div class="list-group mb-4">
+        @foreach (var s in _spaces)
+        {
+            <a class="list-group-item list-group-item-action" href="/projekt/@s.Slug">
+                <strong>@s.Name</strong>
+                <span class="text-muted"> · @s.Pages.Count Seite(n)</span>
+            </a>
+        }
+    </div>
+}
 
-<div class="alert alert-info" role="alert">
-    Platzhalter. Das Anlegen und Öffnen von Projekträumen sowie der Bearbeitungsmodus
-    werden in Phase 4 umgesetzt (Datenmodell steht bereits in <code>Core/Domain</code>).
-</div>
+@if (_isAdmin)
+{
+    <h2 class="h5 mt-4">Neuen Projektraum anlegen</h2>
+    <EditForm Model="NewSpace" method="post" OnValidSubmit="CreateAsync" FormName="createProject">
+        <DataAnnotationsValidator />
+        <div class="row g-2" style="max-width:560px">
+            <div class="col-8">
+                <InputText class="form-control" placeholder="Name des Projektraums" @bind-Value="NewSpace.Name" />
+            </div>
+            <div class="col-4">
+                <button type="submit" class="btn btn-primary w-100">Anlegen</button>
+            </div>
+        </div>
+    </EditForm>
+}
+
+@code {
+    [CascadingParameter] public HttpContext? HttpContext { get; set; }
+
+    [SupplyParameterFromForm] public CreateModel NewSpace { get; set; } = new();
+
+    private List<ProjectSpace> _spaces = new();
+    private bool _isAdmin;
+
+    public class CreateModel
+    {
+        [Required(ErrorMessage = "Name angeben"), MaxLength(200)]
+        public string Name { get; set; } = string.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = HttpContext?.User ?? throw new InvalidOperationException("Kein HttpContext.");
+        var ctx = UserContextFactory.From(user, Editors);
+        _isAdmin = ctx.PlatformRoles.Contains("Admin", StringComparer.OrdinalIgnoreCase);
+
+        var all = await Db.ProjectSpaces
+            .Include(p => p.AccessList)
+            .Include(p => p.Pages)
+            .AsNoTracking()
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        _spaces = all.Where(p => Access.CanView(ctx, p)).ToList();
+    }
+
+    private async Task CreateAsync()
+    {
+        var slug = Slug.From(NewSpace.Name);
+        if (await Db.ProjectSpaces.AnyAsync(p => p.Slug == slug))
+        {
+            slug = $"{slug}-{Guid.NewGuid().ToString("N")[..6]}";
+        }
+        Db.ProjectSpaces.Add(new ProjectSpace { Name = NewSpace.Name.Trim(), Slug = slug });
+        await Db.SaveChangesAsync();
+        Nav.NavigateTo($"/projekt/{slug}", forceLoad: true);
+    }
+}

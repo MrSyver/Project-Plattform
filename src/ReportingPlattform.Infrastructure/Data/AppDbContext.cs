@@ -16,9 +16,15 @@ public class AppDbContext : DbContext
     public DbSet<Zone> Zones => Set<Zone>();
     public DbSet<ContentBlock> Blocks => Set<ContentBlock>();
     public DbSet<AccessEntry> AccessEntries => Set<AccessEntry>();
+    public DbSet<LocalUser> Users => Set<LocalUser>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // Alle Guid-PKs werden client-seitig erzeugt (Guid.NewGuid() im Konstruktor).
+        // Ohne dies würde EF neue, per Navigation entdeckte Entitäten als "Modified" einstufen.
+        foreach (var entity in new[] { typeof(ProjectSpace), typeof(Page), typeof(Zone), typeof(ContentBlock), typeof(AccessEntry), typeof(LocalUser) })
+            b.Entity(entity).Property("Id").ValueGeneratedNever();
+
         b.Entity<ProjectSpace>(e =>
         {
             e.HasKey(x => x.Id);
@@ -48,6 +54,13 @@ public class AppDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Subject).HasMaxLength(320);
+        });
+
+        b.Entity<LocalUser>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Email).HasMaxLength(320);
+            e.HasIndex(x => x.Email).IsUnique();
         });
     }
 }

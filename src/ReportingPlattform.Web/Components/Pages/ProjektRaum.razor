@@ -1,0 +1,113 @@
+@page "/projekt/{Slug}"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using ReportingPlattform.Infrastructure.Data
+@inject AppDbContext Db
+@inject ProjectAccessService Access
+@inject EditorPolicy Editors
+@inject NavigationManager Nav
+
+<PageTitle>@(_space?.Name ?? "Projektraum")</PageTitle>
+
+@if (_space is null)
+{
+    <div class="alert alert-warning">Projektraum nicht gefunden oder kein Zugriff.</div>
+}
+else
+{
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/projekte">Projekträume</a></li>
+            <li class="breadcrumb-item active">@_space.Name</li>
+        </ol>
+    </nav>
+
+    <h1>@_space.Name</h1>
+
+    <h2 class="h5 mt-4">Seiten</h2>
+    @if (VisiblePages.Count == 0)
+    {
+        <div class="alert alert-secondary">Noch keine @(_canEdit ? "" : "veröffentlichten ")Seiten.</div>
+    }
+    else
+    {
+        <div class="list-group mb-4" style="max-width:640px">
+            @foreach (var p in VisiblePages.OrderBy(p => p.Title))
+            {
+                <a class="list-group-item list-group-item-action d-flex justify-content-between"
+                   href="/projekt/@_space.Slug/seite/@p.Slug">
+                    <span>@p.Title</span>
+                    @if (p.State == PublishState.Draft)
+                    {
+                        <span class="badge bg-warning text-dark">Entwurf</span>
+                    }
+                </a>
+            }
+        </div>
+    }
+
+    @if (_canEdit)
+    {
+        <h2 class="h5 mt-4">Neue Seite anlegen</h2>
+        <EditForm Model="NewPage" method="post" OnValidSubmit="CreatePageAsync" FormName="createPage">
+            <DataAnnotationsValidator />
+            <div class="row g-2" style="max-width:560px">
+                <div class="col-8">
+                    <InputText class="form-control" placeholder="Titel der Seite" @bind-Value="NewPage.Title" />
+                </div>
+                <div class="col-4">
+                    <button type="submit" class="btn btn-primary w-100">Anlegen</button>
+                </div>
+            </div>
+        </EditForm>
+    }
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+    [CascadingParameter] public HttpContext? HttpContext { get; set; }
+    [SupplyParameterFromForm] public CreatePageModel NewPage { get; set; } = new();
+
+    private ProjectSpace? _space;
+    private bool _canEdit;
+
+    private List<Page> VisiblePages => _space is null
+        ? new()
+        : (_canEdit ? _space.Pages : _space.Pages.Where(p => p.State == PublishState.Published).ToList());
+
+    public class CreatePageModel
+    {
+        [Required(ErrorMessage = "Titel angeben"), MaxLength(300)]
+        public string Title { get; set; } = string.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = HttpContext?.User ?? throw new InvalidOperationException("Kein HttpContext.");
+        var ctx = UserContextFactory.From(user, Editors);
+
+        var space = await Db.ProjectSpaces
+            .Include(p => p.AccessList)
+            .Include(p => p.Pages)
+            .FirstOrDefaultAsync(p => p.Slug == Slug);
+
+        if (space is null || !Access.CanView(ctx, space)) { _space = null; return; }
+        _space = space;
+        _canEdit = Access.CanEdit(ctx, space);
+    }
+
+    private async Task CreatePageAsync()
+    {
+        if (_space is null || !_canEdit) return;
+        var slug = ReportingPlattform.Core.Services.Slug.From(NewPage.Title);
+        if (_space.Pages.Any(p => p.Slug == slug))
+            slug = $"{slug}-{Guid.NewGuid().ToString("N")[..6]}";
+
+        var page = new Page { ProjectSpaceId = _space.Id, Title = NewPage.Title.Trim(), Slug = slug };
+        page.Zones.Add(new Zone { PageId = page.Id, Name = "Haupt", Order = 0 });
+        Db.Pages.Add(page);
+        await Db.SaveChangesAsync();
+        Nav.NavigateTo($"/projekt/{_space.Slug}/seite/{slug}", forceLoad: true);
+    }
+}

@@ -1,0 +1,202 @@
+@page "/projekt/{ProjektSlug}/seite/{SeitenSlug}"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using System.Text.Json
+@using Microsoft.EntityFrameworkCore
+@using ReportingPlattform.Infrastructure.Data
+@inject AppDbContext Db
+@inject ProjectAccessService Access
+@inject EditorPolicy Editors
+@inject NavigationManager Nav
+
+<PageTitle>@(_page?.Title ?? "Seite")</PageTitle>
+
+@if (_space is null || _page is null)
+{
+    <div class="alert alert-warning">Seite nicht gefunden oder kein Zugriff.</div>
+}
+else
+{
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/projekte">Projekträume</a></li>
+            <li class="breadcrumb-item"><a href="/projekt/@_space.Slug">@_space.Name</a></li>
+            <li class="breadcrumb-item active">@_page.Title</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="mb-0">
+            @_page.Title
+            @if (_page.State == PublishState.Draft)
+            {
+                <span class="badge bg-warning text-dark align-middle" style="font-size:.5em">Entwurf</span>
+            }
+        </h1>
+        @if (_canEdit)
+        {
+            <div class="d-flex gap-2">
+                @if (!_editMode)
+                {
+                    <a class="btn btn-outline-primary btn-sm" href="@PageUrl?edit=1">✏️ Bearbeiten</a>
+                }
+                else
+                {
+                    <a class="btn btn-outline-secondary btn-sm" href="@PageUrl">Vorschau</a>
+                    @if (_page.State == PublishState.Draft)
+                    {
+                        <EditForm Model="Dummy" method="post" OnValidSubmit="PublishAsync" FormName="publish">
+                            <button type="submit" class="btn btn-success btn-sm">Veröffentlichen</button>
+                        </EditForm>
+                    }
+                }
+            </div>
+        }
+    </div>
+
+    @foreach (var zone in _page.Zones.OrderBy(z => z.Order))
+    {
+        <section class="mb-4">
+            @foreach (var block in zone.Blocks.OrderBy(b => b.Order))
+            {
+                <div class="mb-3">
+                    @switch (block.Type)
+                    {
+                        case BlockType.Text:
+                        case BlockType.RichText:
+                            @foreach (var para in GetText(block).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                <p>@para</p>
+                            }
+                            break;
+                        case BlockType.PowerBiReport:
+                            <div class="border rounded p-4 bg-light text-center text-muted">
+                                📊 Power-BI-Report <code>@GetText(block)</code><br />
+                                <small>Sicherer Embed folgt in Phase 7 (SSO/OBO, nie „publish to web").</small>
+                            </div>
+                            break;
+                        default:
+                            <div class="border rounded p-3 text-muted">Block „@block.Type" folgt in einer späteren Phase.</div>
+                            break;
+                    }
+                    @if (_editMode)
+                    {
+                        <EditForm Model="Dummy" method="post" OnValidSubmit="@(() => DeleteBlockAsync(block.Id))" FormName="@($"del-{block.Id}")">
+                            <button type="submit" class="btn btn-link btn-sm text-danger p-0">Block entfernen</button>
+                        </EditForm>
+                    }
+                </div>
+            }
+        </section>
+    }
+
+    @if (_editMode)
+    {
+        <hr />
+        <h2 class="h5">Block hinzufügen</h2>
+        <EditForm Model="NewBlock" method="post" OnValidSubmit="AddBlockAsync" FormName="addBlock">
+            <DataAnnotationsValidator />
+            <div class="mb-2" style="max-width:640px">
+                <InputSelect class="form-select mb-2" @bind-Value="NewBlock.Type">
+                    <option value="Text">Text</option>
+                    <option value="PowerBiReport">Power-BI-Report (Link/Report-Id)</option>
+                </InputSelect>
+                <InputTextArea class="form-control" rows="4"
+                               placeholder="Text-Inhalt bzw. Power-BI-Report-Link"
+                               @bind-Value="NewBlock.Content" />
+            </div>
+            <button type="submit" class="btn btn-primary">Hinzufügen</button>
+        </EditForm>
+    }
+}
+
+@code {
+    [Parameter] public string ProjektSlug { get; set; } = string.Empty;
+    [Parameter] public string SeitenSlug { get; set; } = string.Empty;
+    [CascadingParameter] public HttpContext? HttpContext { get; set; }
+    [SupplyParameterFromQuery(Name = "edit")] public int? EditFlag { get; set; }
+    [SupplyParameterFromForm(FormName = "addBlock")] public AddBlockModel NewBlock { get; set; } = new();
+
+    public object Dummy { get; } = new();
+
+    private ProjectSpace? _space;
+    private Page? _page;
+    private bool _canEdit;
+    private bool _editMode;
+    private string PageUrl => $"/projekt/{ProjektSlug}/seite/{SeitenSlug}";
+
+    public class AddBlockModel
+    {
+        [Required] public string Type { get; set; } = "Text";
+        [Required(ErrorMessage = "Inhalt angeben")] public string Content { get; set; } = string.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = HttpContext?.User ?? throw new InvalidOperationException("Kein HttpContext.");
+        var ctx = UserContextFactory.From(user, Editors);
+
+        _space = await Db.ProjectSpaces.Include(p => p.AccessList)
+            .FirstOrDefaultAsync(p => p.Slug == ProjektSlug);
+        if (_space is null || !Access.CanView(ctx, _space)) { _space = null; return; }
+
+        _canEdit = Access.CanEdit(ctx, _space);
+        _editMode = _canEdit && EditFlag == 1;
+
+        _page = await Db.Pages.Include(p => p.Zones).ThenInclude(z => z.Blocks)
+            .FirstOrDefaultAsync(p => p.ProjectSpaceId == _space.Id && p.Slug == SeitenSlug);
+
+        // Entwürfe sind nur für Editoren sichtbar (§ 4.4).
+        if (_page is not null && _page.State == PublishState.Draft && !_canEdit) _page = null;
+    }
+
+    private static string GetText(ContentBlock block)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(block.ConfigJson);
+            return doc.RootElement.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+        }
+        catch { return ""; }
+    }
+
+    private async Task AddBlockAsync()
+    {
+        if (_page is null || !_canEdit) return;
+        var zone = _page.Zones.OrderBy(z => z.Order).First();
+        var type = Enum.TryParse<BlockType>(NewBlock.Type, out var t) ? t : BlockType.Text;
+        // Explizites Add: Entitäten mit client-generiertem Guid-Key würden über
+        // Navigation-Fixup sonst fälschlich als "Modified" getrackt (UPDATE statt INSERT).
+        Db.Blocks.Add(new ContentBlock
+        {
+            ZoneId = zone.Id,
+            Type = type,
+            Order = zone.Blocks.Count == 0 ? 0 : zone.Blocks.Max(b => b.Order) + 1,
+            ConfigJson = JsonSerializer.Serialize(new { text = NewBlock.Content.Trim() }),
+        });
+        _page.UpdatedAt = DateTimeOffset.UtcNow;
+        await Db.SaveChangesAsync();
+        Nav.NavigateTo($"{PageUrl}?edit=1", forceLoad: true);
+    }
+
+    private async Task DeleteBlockAsync(Guid blockId)
+    {
+        if (_page is null || !_canEdit) return;
+        var block = _page.Zones.SelectMany(z => z.Blocks).FirstOrDefault(b => b.Id == blockId);
+        if (block is not null)
+        {
+            Db.Remove(block);
+            await Db.SaveChangesAsync();
+        }
+        Nav.NavigateTo($"{PageUrl}?edit=1", forceLoad: true);
+    }
+
+    private async Task PublishAsync()
+    {
+        if (_page is null || !_canEdit) return;
+        _page.State = PublishState.Published;
+        _page.UpdatedAt = DateTimeOffset.UtcNow;
+        await Db.SaveChangesAsync();
+        Nav.NavigateTo(PageUrl, forceLoad: true);
+    }
+}

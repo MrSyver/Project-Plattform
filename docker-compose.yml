@@ -7,7 +7,10 @@ services:
       - "8080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+      Database__Provider: "sqlserver"
       ConnectionStrings__AppDb: "Server=db;Database=ReportingPlattform;User Id=sa;Password=${DB_PASSWORD};TrustServerCertificate=true"
+      Admin__Email: "${ADMIN_EMAIL}"
+      Admin__Password: "${ADMIN_PASSWORD}"
       Auth__Mode: "local"
       Bi__Provider: "PowerBiService"
       Storage__LocalPath: "/data/files"

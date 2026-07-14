@@ -1,0 +1,76 @@
+@page "/login"
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using ReportingPlattform.Infrastructure.Auth
+@inject LocalUserService Users
+@inject NavigationManager Nav
+
+<PageTitle>Anmelden – Reporting Plattform</PageTitle>
+
+<div style="max-width:420px;margin:3rem auto">
+    <h1 class="h3 mb-3">Anmelden</h1>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+
+    <EditForm Model="Model" method="post" OnValidSubmit="LoginAsync" FormName="login">
+        <DataAnnotationsValidator />
+        <div class="mb-3">
+            <label class="form-label">E-Mail</label>
+            <InputText class="form-control" @bind-Value="Model.Email" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Passwort</label>
+            <InputText type="password" class="form-control" @bind-Value="Model.Password" />
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Anmelden</button>
+    </EditForm>
+
+    <p class="text-muted mt-3" style="font-size:.85rem">
+        Firmen-Login (AD/Entra) folgt in einer späteren Ausbaustufe – aktuell lokale Accounts.
+    </p>
+</div>
+
+@code {
+    [CascadingParameter] public HttpContext? HttpContext { get; set; }
+
+    [SupplyParameterFromForm] public LoginModel Model { get; set; } = new();
+
+    [SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
+
+    private string? _error;
+
+    public class LoginModel
+    {
+        [Required(ErrorMessage = "E-Mail angeben")] public string Email { get; set; } = string.Empty;
+        [Required(ErrorMessage = "Passwort angeben")] public string Password { get; set; } = string.Empty;
+    }
+
+    private async Task LoginAsync()
+    {
+        var user = await Users.ValidateAsync(Model.Email, Model.Password);
+        if (user is null || HttpContext is null)
+        {
+            _error = "Anmeldung fehlgeschlagen.";
+            return;
+        }
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.DisplayName),
+            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Role, user.Role.ToString()),
+        };
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+
+        // Nur relative Ziele erlauben (kein Open-Redirect).
+        var target = (ReturnUrl is not null && ReturnUrl.StartsWith('/')) ? ReturnUrl : "/projekte";
+        Nav.NavigateTo(target, forceLoad: true);
+    }
+}

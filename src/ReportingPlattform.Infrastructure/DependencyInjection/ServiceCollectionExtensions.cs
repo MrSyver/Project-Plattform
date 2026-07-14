@@ -21,10 +21,25 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddReportingInfrastructure(this IServiceCollection services, IConfiguration config)
     {
-        // App-DB nur registrieren, wenn ein Connection-String gesetzt ist (lokaler Start ohne DB möglich).
+        // App-DB: Provider per Config — "sqlserver" (Prod, § 8.1) oder "sqlite" (lokale Entwicklung).
+        var provider = config["Database:Provider"] ?? "sqlite";
         var appDb = config.GetConnectionString("AppDb");
-        if (!string.IsNullOrWhiteSpace(appDb))
+        if (string.Equals(provider, "sqlserver", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(appDb))
+        {
             services.AddDbContext<AppDbContext>(o => o.UseSqlServer(appDb));
+        }
+        else
+        {
+            var dbPath = string.IsNullOrWhiteSpace(appDb)
+                ? Path.Combine(AppContext.BaseDirectory, "data", "app.db")
+                : appDb;
+            if (!dbPath.Contains("Data Source", StringComparison.OrdinalIgnoreCase))
+                dbPath = $"Data Source={dbPath}";
+            Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, "data"));
+            services.AddDbContext<AppDbContext>(o => o.UseSqlite(dbPath));
+        }
+
+        services.AddScoped<Auth.LocalUserService>();
 
         services.AddSingleton<ISecretStore, EnvSecretStore>();
 
