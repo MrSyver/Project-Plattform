@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reporting Plattform – Modulares BI- & Projekt-Portal</title>
+<meta name="description" content="Enterprise-Plattform für Power-BI-Reports, Projekträume mit eigener Zugriffssteuerung, Dateiaustausch und einen In-App-Editor. Deploybar komplett On-Prem oder in Azure.">
+<style>
+  :root{
+    --bg:#ffffff; --bg-soft:#f6f8fc; --ink:#0f172a; --muted:#556074;
+    --line:#e6eaf2; --brand:#4f46e5; --brand-2:#0ea5e9; --accent:#0ea5e9;
+    --card:#ffffff; --shadow:0 10px 30px rgba(15,23,42,.08);
+    --radius:16px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0b1120; --bg-soft:#0f172a; --ink:#e8edf7; --muted:#9aa7bd;
+      --line:#1e293b; --card:#111a2e; --shadow:0 10px 30px rgba(0,0,0,.35); }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  .btn{display:inline-flex;align-items:center;gap:.5rem;padding:.8rem 1.3rem;border-radius:12px;
+    font-weight:600;font-size:.98rem;border:1px solid transparent;transition:transform .12s ease,box-shadow .12s ease}
+  .btn:hover{transform:translateY(-1px)}
+  .btn-primary{background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;box-shadow:var(--shadow)}
+  .btn-ghost{background:transparent;border-color:var(--line);color:var(--ink)}
+  .badge{display:inline-block;padding:.3rem .8rem;border-radius:999px;font-size:.8rem;font-weight:600;
+    background:rgba(79,70,229,.12);color:var(--brand);border:1px solid rgba(79,70,229,.2)}
+
+  /* Header */
+  header.nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(10px);
+    background:color-mix(in srgb,var(--bg) 80%,transparent);border-bottom:1px solid var(--line)}
+  .nav-in{display:flex;align-items:center;justify-content:space-between;height:66px}
+  .logo{display:flex;align-items:center;gap:.6rem;font-weight:800;letter-spacing:-.02em}
+  .logo .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--brand),var(--brand-2));
+    display:grid;place-items:center;color:#fff;font-size:15px;font-weight:800}
+  .nav-links{display:flex;gap:1.6rem;align-items:center}
+  .nav-links a{color:var(--muted);font-weight:500;font-size:.95rem}
+  .nav-links a:hover{color:var(--ink)}
+  @media(max-width:760px){.nav-links a:not(.btn){display:none}}
+
+  /* Hero */
+  .hero{position:relative;overflow:hidden;padding:76px 0 40px;
+    background:radial-gradient(1200px 500px at 70% -10%,rgba(14,165,233,.18),transparent 60%),
+               radial-gradient(900px 500px at 10% 0%,rgba(79,70,229,.16),transparent 55%)}
+  .hero h1{font-size:clamp(2.1rem,5vw,3.4rem);line-height:1.08;letter-spacing:-.03em;margin:1.1rem 0 .6rem}
+  .hero p.sub{font-size:clamp(1.05rem,2.2vw,1.28rem);color:var(--muted);max-width:640px;margin:0 0 1.6rem}
+  .hero .cta{display:flex;gap:.8rem;flex-wrap:wrap}
+  .hero .note{margin-top:1rem;color:var(--muted);font-size:.9rem}
+
+  /* Browser mockup */
+  .mock{margin:48px auto 0;max-width:960px;border-radius:var(--radius);overflow:hidden;
+    border:1px solid var(--line);box-shadow:var(--shadow);background:var(--card)}
+  .mock .bar{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;border-bottom:1px solid var(--line);background:var(--bg-soft)}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .mock .body{display:grid;grid-template-columns:190px 1fr;min-height:330px}
+  .mock .side{border-right:1px solid var(--line);padding:1rem;background:var(--bg-soft)}
+  .mock .side .item{height:12px;border-radius:6px;background:var(--line);margin:.7rem 0}
+  .mock .side .item.active{background:linear-gradient(90deg,var(--brand),var(--brand-2));width:80%}
+  .mock .content{padding:1.2rem}
+  .mock .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem;margin-top:.4rem}
+  .tile{border:1px solid var(--line);border-radius:12px;padding:.9rem;background:var(--bg)}
+  .tile .k{font-size:1.5rem;font-weight:800;letter-spacing:-.02em}
+  .tile .l{font-size:.72rem;color:var(--muted)}
+  .chart{height:120px;border:1px solid var(--line);border-radius:12px;margin-top:.8rem;
+    background:linear-gradient(180deg,transparent,rgba(14,165,233,.08)),
+      repeating-linear-gradient(90deg,transparent 0 38px,var(--line) 38px 39px);position:relative}
+  .chart svg{position:absolute;inset:0;width:100%;height:100%}
+
+  /* Sections */
+  section{padding:64px 0}
+  .eyebrow{color:var(--brand);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.78rem}
+  h2{font-size:clamp(1.6rem,3.4vw,2.2rem);letter-spacing:-.02em;margin:.4rem 0 1rem}
+  .lead{color:var(--muted);max-width:640px}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem;margin-top:2rem}
+  @media(max-width:860px){.grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  .feature{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:1.4rem;box-shadow:var(--shadow)}
+  .feature .ic{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;margin-bottom:.8rem;
+    background:rgba(79,70,229,.1);color:var(--brand);font-size:20px}
+  .feature h3{margin:.2rem 0 .3rem;font-size:1.08rem}
+  .feature p{margin:0;color:var(--muted);font-size:.94rem}
+
+  /* Deploy split */
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:1.1rem;margin-top:2rem}
+  @media(max-width:760px){.split{grid-template-columns:1fr}}
+  .panel{border:1px solid var(--line);border-radius:var(--radius);padding:1.6rem;background:var(--card)}
+  .panel h3{margin:.2rem 0 .8rem;display:flex;align-items:center;gap:.5rem}
+  .panel ul{margin:.4rem 0 0;padding-left:1.1rem;color:var(--muted)}
+  .panel li{margin:.35rem 0}
+
+  /* Steps / code */
+  .steps{counter-reset:s;margin-top:2rem;display:grid;gap:1rem}
+  .step{display:flex;gap:1rem;align-items:flex-start}
+  .step .n{counter-increment:s;flex:0 0 auto;width:34px;height:34px;border-radius:10px;
+    background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;display:grid;place-items:center;font-weight:800}
+  .step .n::before{content:counter(s)}
+  pre{background:#0b1120;color:#e6edf7;border:1px solid #1e293b;border-radius:12px;padding:1rem 1.1rem;
+    overflow:auto;font-size:.9rem;line-height:1.55}
+  pre code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .tok{color:#7dd3fc}.tok2{color:#a5b4fc}.cmt{color:#64748b}
+
+  /* Download */
+  .dl{background:linear-gradient(135deg,rgba(79,70,229,.1),rgba(14,165,233,.08));
+    border:1px solid var(--line);border-radius:22px;padding:44px;text-align:center}
+  .dl h2{margin-top:0}
+  .dl .cta{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap;margin-top:1.2rem}
+
+  footer{border-top:1px solid var(--line);padding:34px 0;color:var(--muted);font-size:.9rem}
+  .foot{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center}
+  .pill{font-size:.74rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:.2rem .7rem}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <div class="logo"><span class="mark">R</span> Reporting&nbsp;Plattform</div>
+    <nav class="nav-links">
+      <a href="#features">Funktionen</a>
+      <a href="#deploy">Betrieb</a>
+      <a href="#anleitung">Anleitung</a>
+      <a href="#download">Download</a>
+      <a class="btn btn-ghost" href="https://github.com/MrSyver/Project-Plattform">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <span class="badge">Enterprise BI- & Projekt-Portal</span>
+    <h1>BI-Reports, Projekträume und Dateiaustausch<br>in einer modularen Plattform.</h1>
+    <p class="sub">Binde Power-BI-Reports sicher per Single-Sign-On ein, baue Projektseiten aus Bausteinen zusammen und tausche Dateien aus – deploybar <strong>komplett On-Prem oder in Azure</strong>.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#download">↓ Herunterladen</a>
+      <a class="btn btn-ghost" href="#anleitung">Anleitung ansehen</a>
+    </div>
+    <p class="note">Open Source · ASP.NET Core 8 &amp; Blazor · für Banken und größere Unternehmen konzipiert</p>
+
+    <!-- Mockup -->
+    <div class="mock" aria-hidden="true">
+      <div class="bar">
+        <span class="dot" style="background:#ef4444"></span>
+        <span class="dot" style="background:#f59e0b"></span>
+        <span class="dot" style="background:#22c55e"></span>
+      </div>
+      <div class="body">
+        <div class="side">
+          <div class="item active"></div>
+          <div class="item"></div>
+          <div class="item" style="width:70%"></div>
+          <div class="item" style="width:85%"></div>
+          <div class="item" style="width:60%"></div>
+        </div>
+        <div class="content">
+          <div class="tiles">
+            <div class="tile"><div class="k">€ 4,2M</div><div class="l">Umsatz YTD</div></div>
+            <div class="tile"><div class="k">+12,4%</div><div class="l">ggü. Vorjahr</div></div>
+            <div class="tile"><div class="k">98,1%</div><div class="l">SLA-Quote</div></div>
+          </div>
+          <div class="chart">
+            <svg viewBox="0 0 400 120" preserveAspectRatio="none">
+              <polyline fill="none" stroke="#4f46e5" stroke-width="2.5"
+                points="0,90 45,70 90,78 135,50 180,58 225,32 270,40 315,20 360,28 400,12"/>
+              <polyline fill="none" stroke="#0ea5e9" stroke-width="2" stroke-dasharray="4 4"
+                points="0,100 45,92 90,88 135,80 180,74 225,66 270,60 315,54 360,46 400,40"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="wrap">
+    <span class="eyebrow">Funktionen</span>
+    <h2>Alles, was ein professionelles BI-Portal braucht</h2>
+    <p class="lead">Modular aufgebaut: Bausteine je Projekt zusammenstellen, ohne für jeden Kunden neu zu entwickeln.</p>
+    <div class="grid">
+      <div class="feature"><div class="ic">📊</div><h3>Power BI mit SSO</h3><p>Reports per Auswahl oder Link einbinden. Bei AD-Login automatisches Single-Sign-On – die Berechtigungen (RLS) des Nutzers greifen. Niemals „publish to web".</p></div>
+      <div class="feature"><div class="ic">🗂️</div><h3>Projekträume</h3><p>Getrennte Bereiche mit eigenem Zugriff – frei kombinierbar aus AD-Gruppen, einzelnen Nutzern und externen Gästen ohne AD-Konto.</p></div>
+      <div class="feature"><div class="ic">📎</div><h3>Dateiaustausch</h3><p>Dateibibliothek je Projekt mit Ordnern, Versionierung und Pflicht-Virenscan – jeder Zugriff wird protokolliert.</p></div>
+      <div class="feature"><div class="ic">🧩</div><h3>In-App-Editor</h3><p>Editoren bauen Seiten im WYSIWYG-Modus aus Blöcken zusammen: Text, BI-Report, Dateiaustausch, Video. Entwurf → Veröffentlichen.</p></div>
+      <div class="feature"><div class="ic">🔐</div><h3>Enterprise-Security</h3><p>Entra ID / AD, VPN-/Netzwerk-Isolation, Secrets im Vault, lückenloses Audit-Log. Auf DORA/BAIT/ISO 27001 ausgelegt.</p></div>
+      <div class="feature"><div class="ic">☁️</div><h3>On-Prem &amp; Cloud</h3><p>Ein Docker-Image, zwei Wege: komplett On-Prem (air-gapped-fähig) oder Azure – nur die Konfiguration unterscheidet sich.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- DEPLOY -->
+<section id="deploy" style="background:var(--bg-soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <span class="eyebrow">Betrieb</span>
+    <h2>Zwei vollständige Deployment-Pfade</h2>
+    <p class="lead">Gleiches Image, austauschbare Adapter je Schicht (Ports &amp; Adapters). Je Kunde eine isolierte Instanz.</p>
+    <div class="split">
+      <div class="panel">
+        <h3>☁️ Komplett Cloud (Azure)</h3>
+        <ul>
+          <li>Azure Container Apps + Azure SQL</li>
+          <li>Entra ID (inkl. B2B-Gäste)</li>
+          <li>Key Vault · Blob Storage</li>
+          <li>Power BI Service (Embedded)</li>
+          <li>Private Endpoint + VPN/ExpressRoute</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>🏢 Komplett On-Prem</h3>
+        <ul>
+          <li>Docker Compose + SQL Server</li>
+          <li>AD FS / Keycloak gegen lokales AD</li>
+          <li>HashiCorp Vault · Volume/MinIO</li>
+          <li>Power BI Report Server</li>
+          <li>Interner Zugang im Firmennetz/VPN</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ANLEITUNG -->
+<section id="anleitung">
+  <div class="wrap">
+    <span class="eyebrow">Anleitung</span>
+    <h2>In wenigen Minuten lokal starten</h2>
+    <p class="lead">Voraussetzung: .NET&nbsp;8&nbsp;SDK. (Für den Container-Betrieb zusätzlich Docker.)</p>
+    <div class="steps">
+      <div class="step"><div class="n"></div><div>
+        <strong>Repository holen</strong>
+        <pre><code><span class="cmt"># klonen …</span>
+git <span class="tok">clone</span> https://github.com/MrSyver/Project-Plattform.git
+<span class="tok2">cd</span> Project-Plattform</code></pre>
+      </div></div>
+      <div class="step"><div class="n"></div><div>
+        <strong>Bauen &amp; testen</strong>
+        <pre><code>dotnet <span class="tok">build</span> ReportingPlattform.sln
+dotnet <span class="tok">test</span>  ReportingPlattform.sln   <span class="cmt"># alle Tests grün</span></code></pre>
+      </div></div>
+      <div class="step"><div class="n"></div><div>
+        <strong>Lokal starten</strong>
+        <pre><code>dotnet <span class="tok">run</span> --project src/ReportingPlattform.Web
+<span class="cmt"># Health-Check: http://localhost:5080/healthz</span></code></pre>
+      </div></div>
+      <div class="step"><div class="n"></div><div>
+        <strong>Oder als Container (On-Prem)</strong>
+        <pre><code>cp .env.example .env      <span class="cmt"># Werte setzen</span>
+docker compose <span class="tok">up</span> -d     <span class="cmt"># App + SQL Server + ClamAV</span></code></pre>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- DOWNLOAD -->
+<section id="download">
+  <div class="wrap">
+    <div class="dl">
+      <span class="badge">Download</span>
+      <h2>Reporting Plattform herunterladen</h2>
+      <p class="lead" style="margin:0 auto">Quellcode als ZIP oder direkt per Git. Öffentliches Repository, MIT-freundlich – frei nutz- und anpassbar.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/MrSyver/Project-Plattform/archive/refs/heads/main.zip">↓ ZIP herunterladen</a>
+        <a class="btn btn-ghost" href="https://github.com/MrSyver/Project-Plattform">Auf GitHub ansehen ↗</a>
+        <a class="btn btn-ghost" href="https://github.com/MrSyver/Project-Plattform/releases">Releases</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div class="logo"><span class="mark">R</span> Reporting Plattform</div>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
+      <span class="pill">ASP.NET Core 8</span>
+      <span class="pill">Blazor</span>
+      <span class="pill">Power BI</span>
+      <span class="pill">On-Prem &amp; Azure</span>
+    </div>
+    <div>© 2026 · <a href="https://github.com/MrSyver/Project-Plattform" style="color:var(--brand)">github.com/MrSyver</a></div>
+  </div>
+</footer>
+
+</body>
+</html>
