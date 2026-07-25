@@ -30,6 +30,16 @@ public sealed class ProjectAccessService
         return u.CanUseEditor && role is ProjectRole.Beitragender or ProjectRole.Owner;
     }
 
+    /// <summary>
+    /// Dateien hochladen dürfen Admin oder Mitglieder ab „Beitragender" — bewusst OHNE
+    /// Editor-Fähigkeit (die gilt nur für den Seiten-Bearbeitungsmodus). Download = CanView.
+    /// </summary>
+    public bool CanUploadFiles(UserContext u, ProjectSpace p)
+    {
+        if (HasRole(u, PlatformRole.Admin)) return true;
+        return EffectiveRole(u, p) is ProjectRole.Beitragender or ProjectRole.Owner;
+    }
+
     /// <summary>Mitglieder/ACL verwalten darf nur Admin oder der Projekt-Owner (§ 2.4).</summary>
     public bool CanManageMembers(UserContext u, ProjectSpace p)
         => HasRole(u, PlatformRole.Admin) || EffectiveRole(u, p) == ProjectRole.Owner;

@@ -75,6 +75,12 @@ else
                                 <small>Sicherer Embed folgt in Phase 7 (SSO/OBO, nie „publish to web").</small>
                             </div>
                             break;
+                        case BlockType.FileLibrary:
+                            <div class="border rounded p-4 bg-light">
+                                📎 <strong>Dateibibliothek dieses Projektraums</strong><br />
+                                <a href="/projekt/@ProjektSlug/dateien">Zu den Dateien →</a>
+                            </div>
+                            break;
                         default:
                             <div class="border rounded p-3 text-muted">Block „@block.Type" folgt in einer späteren Phase.</div>
                             break;
@@ -100,6 +106,7 @@ else
                 <InputSelect class="form-select mb-2" @bind-Value="NewBlock.Type">
                     <option value="Text">Text</option>
                     <option value="PowerBiReport">Power-BI-Report (Link/Report-Id)</option>
+                    <option value="FileLibrary">Dateibibliothek (Verweis)</option>
                 </InputSelect>
                 <InputTextArea class="form-control" rows="4"
                                placeholder="Text-Inhalt bzw. Power-BI-Report-Link"
@@ -128,7 +135,7 @@ else
     public class AddBlockModel
     {
         [Required] public string Type { get; set; } = "Text";
-        [Required(ErrorMessage = "Inhalt angeben")] public string Content { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty; // Pflicht außer bei FileLibrary (siehe AddBlockAsync)
     }
 
     protected override async Task OnInitializedAsync()
@@ -165,6 +172,8 @@ else
         if (_page is null || !_canEdit) return;
         var zone = _page.Zones.OrderBy(z => z.Order).First();
         var type = Enum.TryParse<BlockType>(NewBlock.Type, out var t) ? t : BlockType.Text;
+        // Inhalt ist Pflicht für Text/BI; die Dateibibliothek braucht keinen.
+        if (type != BlockType.FileLibrary && string.IsNullOrWhiteSpace(NewBlock.Content)) return;
         // Explizites Add: Entitäten mit client-generiertem Guid-Key würden über
         // Navigation-Fixup sonst fälschlich als "Modified" getrackt (UPDATE statt INSERT).
         Db.Blocks.Add(new ContentBlock

@@ -40,10 +40,21 @@ public static class ServiceCollectionExtensions
         }
 
         services.AddScoped<Auth.LocalUserService>();
+        services.AddScoped<Files.FileLibraryService>();
+
+        // Upload-Regeln: Typ-Whitelist + Größen-Limit (§ 9.6), per Config übersteuerbar.
+        var allowedExt = config.GetSection("Files:AllowedExtensions").Get<string[]>()
+            ?? new[] { "pdf", "docx", "xlsx", "pptx", "csv", "txt", "md", "png", "jpg", "jpeg", "zip" };
+        var maxMb = config.GetValue<long?>("Files:MaxSizeMb") ?? 100;
+        services.AddSingleton(new Core.Services.FileValidation(allowedExt, maxMb * 1024 * 1024));
 
         services.AddSingleton<ISecretStore, EnvSecretStore>();
 
-        var storagePath = config["Storage:LocalPath"] ?? Path.Combine(AppContext.BaseDirectory, "data", "files");
+        // Achtung: leere Config-Werte sind "" (nicht null) → IsNullOrWhiteSpace prüfen, nicht ??.
+        var configuredPath = config["Storage:LocalPath"];
+        var storagePath = string.IsNullOrWhiteSpace(configuredPath)
+            ? Path.Combine(AppContext.BaseDirectory, "data", "files")
+            : configuredPath;
         services.AddSingleton<IBlobStore>(_ => new LocalFileBlobStore(storagePath));
 
         services.AddSingleton<IVirusScanner, DevPermissiveVirusScanner>();

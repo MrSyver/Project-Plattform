@@ -1,8 +1,12 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.EntityFrameworkCore;
 using ReportingPlattform.Core.Services;
 using ReportingPlattform.Infrastructure.Auth;
 using ReportingPlattform.Infrastructure.Data;
 using ReportingPlattform.Infrastructure.DependencyInjection;
+using ReportingPlattform.Infrastructure.Files;
+using ReportingPlattform.Web;
 using ReportingPlattform.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -59,6 +63,43 @@ app.MapGet("/auth/logout", async context =>
         .SignOutAsync(context, CookieAuthenticationDefaults.AuthenticationScheme);
     context.Response.Redirect("/");
 });
+
+// ---- Dateibibliothek (§ 4.5): Upload mit Pflicht-Virenscan, Download mit Audit ----
+
+app.MapPost("/api/projekt/{slug}/dateien", async (
+    string slug, IFormFile? datei, HttpContext http,
+    AppDbContext db, FileLibraryService files, ProjectAccessService access, EditorPolicy editors) =>
+{
+    var ctx = UserContextFactory.From(http.User, editors);
+    var space = await db.ProjectSpaces.Include(p => p.AccessList).FirstOrDefaultAsync(p => p.Slug == slug);
+    if (space is null || !access.CanUploadFiles(ctx, space))
+        return Results.Redirect($"/projekt/{slug}/dateien?fehler={Uri.EscapeDataString("Keine Berechtigung zum Hochladen.")}");
+    if (datei is null || datei.Length == 0)
+        return Results.Redirect($"/projekt/{slug}/dateien?fehler={Uri.EscapeDataString("Keine Datei ausgewählt.")}");
+
+    var actor = http.User.FindFirstValue(ClaimTypes.Email) ?? "unbekannt";
+    await using var stream = datei.OpenReadStream();
+    var (_, error) = await files.UploadAsync(space, datei.FileName, datei.ContentType, datei.Length, stream, actor);
+
+    return Results.Redirect(error is null
+        ? $"/projekt/{slug}/dateien"
+        : $"/projekt/{slug}/dateien?fehler={Uri.EscapeDataString(error)}");
+}).RequireAuthorization();
+
+app.MapGet("/projekt/{slug}/datei/{id:guid}", async (
+    string slug, Guid id, HttpContext http,
+    AppDbContext db, FileLibraryService files, ProjectAccessService access, EditorPolicy editors) =>
+{
+    var ctx = UserContextFactory.From(http.User, editors);
+    var space = await db.ProjectSpaces.Include(p => p.AccessList).FirstOrDefaultAsync(p => p.Slug == slug);
+    if (space is null || !access.CanView(ctx, space)) return Results.NotFound();
+
+    var actor = http.User.FindFirstValue(ClaimTypes.Email) ?? "unbekannt";
+    var result = await files.OpenAsync(space, id, actor);
+    return result is null
+        ? Results.NotFound()
+        : Results.File(result.Value.Content, result.Value.Meta.ContentType, result.Value.Meta.FileName);
+}).RequireAuthorization();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

@@ -90,6 +90,21 @@ public class ProjectAccessServiceTests
     }
 
     [Fact]
+    public void Upload_requires_contributor_role_but_no_editor_capability()
+    {
+        var entry = new AccessEntry { SubjectType = AccessSubjectType.InternalUser, Subject = "up@kunde.de", Role = ProjectRole.Beitragender };
+        var viewer = new AccessEntry { SubjectType = AccessSubjectType.InternalUser, Subject = "view@kunde.de", Role = ProjectRole.Betrachter };
+        var space = SpaceWith(entry, viewer);
+
+        // Beitragender darf hochladen — auch OHNE Editor-Fähigkeit (Datei ≠ Seite bearbeiten)
+        Assert.True(Access.CanUploadFiles(new UserContext("up@kunde.de", new[] { "Viewer" }, None, CanUseEditor: false), space));
+        // Betrachter darf nicht hochladen
+        Assert.False(Access.CanUploadFiles(new UserContext("view@kunde.de", new[] { "Viewer" }, None, CanUseEditor: true), space));
+        // Admin immer
+        Assert.True(Access.CanUploadFiles(new UserContext("a@kunde.de", new[] { "Admin" }, None, CanUseEditor: false), space));
+    }
+
+    [Fact]
     public void Manage_members_requires_admin_or_owner()
     {
         var ownerEntry = new AccessEntry { SubjectType = AccessSubjectType.InternalUser, Subject = "owner@kunde.de", Role = ProjectRole.Owner };

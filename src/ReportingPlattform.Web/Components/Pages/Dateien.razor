@@ -1,0 +1,117 @@
+@page "/projekt/{ProjektSlug}/dateien"
+@attribute [Authorize]
+@using Microsoft.EntityFrameworkCore
+@using ReportingPlattform.Infrastructure.Data
+@using ReportingPlattform.Infrastructure.Files
+@inject AppDbContext Db
+@inject ProjectAccessService Access
+@inject EditorPolicy Editors
+@inject FileLibraryService Files
+@inject FileValidation Validation
+
+<PageTitle>Dateien – @(_space?.Name ?? "Projektraum")</PageTitle>
+
+@if (_space is null)
+{
+    <div class="alert alert-warning">Projektraum nicht gefunden oder kein Zugriff.</div>
+}
+else
+{
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/projekte">Projekträume</a></li>
+            <li class="breadcrumb-item"><a href="/projekt/@_space.Slug">@_space.Name</a></li>
+            <li class="breadcrumb-item active">Dateien</li>
+        </ol>
+    </nav>
+
+    <h1>Dateibibliothek</h1>
+    <p class="text-muted" style="max-width:640px">
+        Dateiaustausch für diesen Projektraum. Jeder Upload wird auf Viren geprüft;
+        jeder Zugriff wird protokolliert. Gleicher Dateiname ⇒ neue Version.
+    </p>
+
+    @if (Fehler is not null)
+    {
+        <div class="alert alert-danger" style="max-width:640px">@Fehler</div>
+    }
+
+    @if (_files.Count == 0)
+    {
+        <div class="alert alert-secondary" style="max-width:640px">Noch keine Dateien in diesem Projektraum.</div>
+    }
+    else
+    {
+        <table class="table" style="max-width:860px">
+            <thead>
+                <tr><th>Datei</th><th>Version</th><th>Größe</th><th>Hochgeladen</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var (f, versions) in _files)
+                {
+                    <tr>
+                        <td>@f.FileName</td>
+                        <td>v@(f.Version)@(versions > 1 ? $" ({versions} Versionen)" : "")</td>
+                        <td>@FormatSize(f.Size)</td>
+                        <td>@f.UploadedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm") · @f.UploadedBy</td>
+                        <td class="text-end">
+                            <a class="btn btn-outline-primary btn-sm" href="/projekt/@_space.Slug/datei/@f.Id">⬇ Herunterladen</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (_canUpload)
+    {
+        <h2 class="h5 mt-4">Datei hochladen</h2>
+        <form action="/api/projekt/@_space.Slug/dateien" method="post" enctype="multipart/form-data" style="max-width:640px">
+            <AntiforgeryToken />
+            <div class="row g-2">
+                <div class="col-8">
+                    <input type="file" name="datei" class="form-control" required />
+                </div>
+                <div class="col-4">
+                    <button type="submit" class="btn btn-primary w-100">Hochladen</button>
+                </div>
+            </div>
+            <p class="text-muted mt-2" style="font-size:.85rem">
+                Max. @(Validation.MaxSizeBytes / (1024 * 1024)) MB · erlaubte Typen laut Instanz-Konfiguration.
+            </p>
+        </form>
+    }
+}
+
+@code {
+    [Parameter] public string ProjektSlug { get; set; } = string.Empty;
+    [CascadingParameter] public HttpContext? HttpContext { get; set; }
+    [SupplyParameterFromQuery(Name = "fehler")] public string? Fehler { get; set; }
+
+    private ProjectSpace? _space;
+    private bool _canUpload;
+    private List<(ProjectFile Latest, int VersionCount)> _files = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = HttpContext?.User ?? throw new InvalidOperationException("Kein HttpContext.");
+        var ctx = UserContextFactory.From(user, Editors);
+
+        var space = await Db.ProjectSpaces.Include(p => p.AccessList)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Slug == ProjektSlug);
+        if (space is null || !Access.CanView(ctx, space)) { _space = null; return; }
+
+        _space = space;
+        _canUpload = Access.CanUploadFiles(ctx, space);
+        _files = await Files.ListAsync(space.Id);
+    }
+
+    // Hinweis: keine Pattern-Switch mit "<" — Razor liest das als Markup-Tag.
+    private static string FormatSize(long bytes)
+    {
+        if (bytes >= 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):0.#} MB";
+        if (bytes >= 1024) return $"{bytes / 1024.0:0.#} KB";
+        return $"{bytes} B";
+    }
+}

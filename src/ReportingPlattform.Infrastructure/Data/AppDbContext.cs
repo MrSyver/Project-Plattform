@@ -17,12 +17,13 @@ public class AppDbContext : DbContext
     public DbSet<ContentBlock> Blocks => Set<ContentBlock>();
     public DbSet<AccessEntry> AccessEntries => Set<AccessEntry>();
     public DbSet<LocalUser> Users => Set<LocalUser>();
+    public DbSet<ProjectFile> Files => Set<ProjectFile>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
         // Alle Guid-PKs werden client-seitig erzeugt (Guid.NewGuid() im Konstruktor).
         // Ohne dies würde EF neue, per Navigation entdeckte Entitäten als "Modified" einstufen.
-        foreach (var entity in new[] { typeof(ProjectSpace), typeof(Page), typeof(Zone), typeof(ContentBlock), typeof(AccessEntry), typeof(LocalUser) })
+        foreach (var entity in new[] { typeof(ProjectSpace), typeof(Page), typeof(Zone), typeof(ContentBlock), typeof(AccessEntry), typeof(LocalUser), typeof(ProjectFile) })
             b.Entity(entity).Property("Id").ValueGeneratedNever();
 
         b.Entity<ProjectSpace>(e =>
@@ -61,6 +62,14 @@ public class AppDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.Email).HasMaxLength(320);
             e.HasIndex(x => x.Email).IsUnique();
+        });
+
+        b.Entity<ProjectFile>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.FileName).HasMaxLength(255);
+            e.Property(x => x.StorageId).HasMaxLength(300);
+            e.HasIndex(x => new { x.ProjectSpaceId, x.FileName });
         });
     }
 }
