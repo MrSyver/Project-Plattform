@@ -6,10 +6,19 @@ using ReportingPlattform.Infrastructure.Auth;
 using ReportingPlattform.Infrastructure.Data;
 using ReportingPlattform.Infrastructure.DependencyInjection;
 using ReportingPlattform.Infrastructure.Files;
+using ReportingPlattform.Infrastructure.Setup;
 using ReportingPlattform.Web;
 using ReportingPlattform.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Einrichtungs-Assistent: setup.json (falls vorhanden) als zusätzliche Konfigurationsquelle —
+// überschreibt appsettings, wird aber selbst von Umgebungsvariablen überschrieben.
+var dataDirectory = Path.Combine(AppContext.BaseDirectory, "data");
+var setupService = new SetupService(dataDirectory);
+if (setupService.Load() is { IsCompleted: true } saved)
+    builder.Configuration.AddInMemoryCollection(SetupService.ToConfiguration(saved));
+builder.Services.AddSingleton(setupService);
 
 // Blazor Web App (serverseitige Interaktivität – Logik bleibt am Server, § 3 / ADR-002).
 builder.Services.AddRazorComponents()
@@ -19,8 +28,16 @@ builder.Services.AddRazorComponents()
 builder.Services.AddReportingInfrastructure(builder.Configuration);
 
 // Editor-Policy: „Editor = E-Mail-Allowlist ODER Editor-Rolle" (ADR-018).
-var editorAllowlist = builder.Configuration.GetSection("Editors:Allowlist").Get<string[]>() ?? Array.Empty<string>();
-builder.Services.AddSingleton(new EditorPolicy(editorAllowlist));
+// Scoped + Live-Lesen aus setup.json, damit im Assistenten gepflegte Editoren
+// sofort wirksam sind (ohne Neustart).
+builder.Services.AddScoped(sp =>
+{
+    var saved = sp.GetRequiredService<SetupService>().Load();
+    var emails = saved is { IsCompleted: true }
+        ? saved.EditorAllowlist.ToArray()
+        : builder.Configuration.GetSection("Editors:Allowlist").Get<string[]>() ?? Array.Empty<string>();
+    return new EditorPolicy(emails);
+});
 builder.Services.AddSingleton<ProjectAccessService>();
 
 // Auth: Cookie-Login für lokale Accounts (Phase 3). Entra-OIDC folgt als zweiter
@@ -48,6 +65,27 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+
+// Solange die Plattform nicht eingerichtet ist, führt jeder Aufruf zum Assistenten.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? "/";
+    var isExempt = path.StartsWith("/setup", StringComparison.OrdinalIgnoreCase)
+                   || path.StartsWith("/healthz", StringComparison.OrdinalIgnoreCase)
+                   || path.StartsWith("/readyz", StringComparison.OrdinalIgnoreCase)
+                   || path.StartsWith("/_", StringComparison.OrdinalIgnoreCase)   // Blazor/Framework
+                   || path.StartsWith("/lib", StringComparison.OrdinalIgnoreCase)
+                   || path.StartsWith("/bootstrap", StringComparison.OrdinalIgnoreCase)
+                   || Path.HasExtension(path);
+
+    if (!setupService.IsConfigured && !isExempt)
+    {
+        context.Response.Redirect("/setup");
+        return;
+    }
+    await next();
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();

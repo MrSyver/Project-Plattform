@@ -1,0 +1,387 @@
+@page "/setup"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using ReportingPlattform.Infrastructure.Auth
+@using ReportingPlattform.Infrastructure.Data
+@using ReportingPlattform.Infrastructure.Setup
+@inject SetupService SetupSvc
+@inject AppDbContext Db
+@inject LocalUserService Users
+@inject NavigationManager Nav
+
+<PageTitle>Einrichtung – Reporting Plattform</PageTitle>
+
+<div style="max-width:760px;margin:2rem auto">
+
+    @if (SetupSvc.IsConfigured && Schritt != 99)
+    {
+        <div class="alert alert-success">
+            <strong>Die Plattform ist bereits eingerichtet.</strong>
+            <a href="/" class="alert-link">Zur Startseite →</a>
+        </div>
+    }
+    else
+    {
+        <div class="mb-4">
+            <h1 class="h3">Einrichtung</h1>
+            <p class="text-muted mb-2">Schritt @Schritt von 6 · nach dem letzten Schritt ist die Plattform einsatzbereit.</p>
+            <div class="progress" style="height:6px">
+                <div class="progress-bar" style="width:@(Schritt * 100 / 6)%"></div>
+            </div>
+        </div>
+
+        @if (_fehler is not null)
+        {
+            <div class="alert alert-danger">@_fehler</div>
+        }
+
+        @switch (Schritt)
+        {
+            case 1:
+                <h2 class="h5">1. Organisation</h2>
+                <p class="text-muted">Wie soll die Plattform heißen und für wen wird sie betrieben?</p>
+                <EditForm Model="S1" method="post" OnValidSubmit="Speichern1" FormName="s1">
+                    <div class="mb-3">
+                        <label class="form-label">Organisation / Kunde</label>
+                        <InputText class="form-control" @bind-Value="S1.OrganizationName" placeholder="z. B. Musterbank AG" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Titel der Plattform</label>
+                        <InputText class="form-control" @bind-Value="S1.PlatformTitle" placeholder="Reporting Plattform" />
+                    </div>
+                    <button type="submit" class="btn btn-primary">Weiter</button>
+                </EditForm>
+                break;
+
+            case 2:
+                <h2 class="h5">2. Betrieb &amp; Anmeldung</h2>
+                <p class="text-muted">Bestimmt, welche Adapter geladen werden (gleiches Image, andere Konfiguration).</p>
+                <EditForm Model="S2" method="post" OnValidSubmit="Speichern2" FormName="s2">
+                    <div class="mb-3">
+                        <label class="form-label">Betriebsart</label>
+                        <InputSelect class="form-select" @bind-Value="S2.DeploymentMode">
+                            <option value="onprem">On-Prem (eigenes Rechenzentrum / VPN)</option>
+                            <option value="cloud">Cloud (Azure)</option>
+                        </InputSelect>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Anmeldung</label>
+                        <InputSelect class="form-select" @bind-Value="S2.AuthMode">
+                            <option value="local">Lokale Konten (in der Plattform verwaltet)</option>
+                            <option value="entra">Firmen-Login (Entra ID / AD)</option>
+                            <option value="hybrid">Beides (Firmen-Login + lokale Gäste)</option>
+                        </InputSelect>
+                        <div class="form-text">Firmen-Login wird in einer späteren Ausbaustufe aktiviert; lokale Konten funktionieren sofort.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Datenbank</label>
+                        <InputSelect class="form-select" @bind-Value="S2.DatabaseProvider">
+                            <option value="sqlite">SQLite (Datei — für Test und kleine Installationen)</option>
+                            <option value="sqlserver">SQL Server / Azure SQL (Produktion)</option>
+                        </InputSelect>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Verbindungszeichenfolge (nur bei SQL Server)</label>
+                        <InputText class="form-control" @bind-Value="S2.ConnectionString"
+                                   placeholder="Server=...;Database=ReportingPlattform;..." />
+                    </div>
+                    <a class="btn btn-link" href="/setup?schritt=1">Zurück</a>
+                    <button type="submit" class="btn btn-primary">Weiter</button>
+                </EditForm>
+                break;
+
+            case 3:
+                <h2 class="h5">3. Administrator-Konto</h2>
+                <p class="text-muted">Dieses Konto verwaltet Projekträume, Zugriffe und Einstellungen.</p>
+                <EditForm Model="S3" method="post" OnValidSubmit="Speichern3" FormName="s3">
+                    <div class="mb-3">
+                        <label class="form-label">E-Mail</label>
+                        <InputText class="form-control" @bind-Value="S3.Email" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Passwort</label>
+                        <InputText type="password" class="form-control" @bind-Value="S3.Password" />
+                        <div class="form-text">Mindestens 12 Zeichen, mit Groß-, Kleinbuchstaben und Ziffern.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Passwort wiederholen</label>
+                        <InputText type="password" class="form-control" @bind-Value="S3.PasswordRepeat" />
+                    </div>
+                    <a class="btn btn-link" href="/setup?schritt=2">Zurück</a>
+                    <button type="submit" class="btn btn-primary">Weiter</button>
+                </EditForm>
+                break;
+
+            case 4:
+                <h2 class="h5">4. Editoren</h2>
+                <p class="text-muted">Wer darf Projektseiten bauen? E-Mail-Adressen (eine pro Zeile oder kommagetrennt). Das Administrator-Konto darf immer.</p>
+                <EditForm Model="S4" method="post" OnValidSubmit="Speichern4" FormName="s4">
+                    <div class="mb-3">
+                        <InputTextArea class="form-control" rows="4" @bind-Value="S4.Editors"
+                                       placeholder="max.mustermann@kunde.de" />
+                    </div>
+                    <a class="btn btn-link" href="/setup?schritt=3">Zurück</a>
+                    <button type="submit" class="btn btn-primary">Weiter</button>
+                </EditForm>
+                break;
+
+            case 5:
+                <h2 class="h5">5. Power BI &amp; Dateien</h2>
+                <EditForm Model="S5" method="post" OnValidSubmit="Speichern5" FormName="s5">
+                    <div class="mb-3">
+                        <label class="form-label">Power-BI-Quelle</label>
+                        <InputSelect class="form-select" @bind-Value="S5.BiProvider">
+                            <option value="PowerBiService">Power BI Service (Cloud)</option>
+                            <option value="PowerBiReportServer">Power BI Report Server (On-Prem)</option>
+                        </InputSelect>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Workspace-Id (optional, kann später ergänzt werden)</label>
+                        <InputText class="form-control" @bind-Value="S5.WorkspaceId" />
+                    </div>
+                    <hr />
+                    <div class="mb-3">
+                        <label class="form-label">Maximale Dateigröße (MB)</label>
+                        <InputNumber class="form-control" @bind-Value="S5.MaxFileSizeMb" style="max-width:180px" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Erlaubte Dateitypen</label>
+                        <InputTextArea class="form-control" rows="2" @bind-Value="S5.Extensions" />
+                        <div class="form-text">Nur diese Endungen werden angenommen (Whitelist).</div>
+                    </div>
+                    <a class="btn btn-link" href="/setup?schritt=4">Zurück</a>
+                    <button type="submit" class="btn btn-primary">Weiter</button>
+                </EditForm>
+                break;
+
+            case 6:
+                <h2 class="h5">6. Prüfen &amp; abschließen</h2>
+                <table class="table">
+                    <tbody>
+                        <tr><th style="width:40%">Organisation</th><td>@_entwurf.OrganizationName</td></tr>
+                        <tr><th>Titel</th><td>@_entwurf.PlatformTitle</td></tr>
+                        <tr><th>Betriebsart</th><td>@(_entwurf.DeploymentMode == "cloud" ? "Cloud (Azure)" : "On-Prem")</td></tr>
+                        <tr><th>Anmeldung</th><td>@_entwurf.AuthMode</td></tr>
+                        <tr><th>Datenbank</th><td>@_entwurf.DatabaseProvider</td></tr>
+                        <tr><th>Administrator</th><td>@_entwurf.AdminEmail</td></tr>
+                        <tr><th>Editoren</th><td>@(_entwurf.EditorAllowlist.Count == 0 ? "—" : string.Join(", ", _entwurf.EditorAllowlist))</td></tr>
+                        <tr><th>Power BI</th><td>@_entwurf.BiProvider</td></tr>
+                        <tr><th>Dateien</th><td>max. @_entwurf.MaxFileSizeMb MB · @string.Join(", ", _entwurf.AllowedExtensions)</td></tr>
+                    </tbody>
+                </table>
+
+                <h3 class="h6 mt-4">Systemprüfung</h3>
+                <ul class="list-group mb-3">
+                    @foreach (var (name, ok, hinweis) in _pruefungen)
+                    {
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>@(ok ? "✅" : "⚠️") @name</span>
+                            <span class="text-muted">@hinweis</span>
+                        </li>
+                    }
+                </ul>
+
+                <EditForm Model="S6" method="post" OnValidSubmit="Abschliessen" FormName="s6">
+                    <div class="form-check mb-3">
+                        <InputCheckbox class="form-check-input" id="demo" @bind-Value="S6.CreateDemo" />
+                        <label class="form-check-label" for="demo">Beispiel-Projektraum anlegen (empfohlen zum Ausprobieren)</label>
+                    </div>
+                    <a class="btn btn-link" href="/setup?schritt=5">Zurück</a>
+                    <button type="submit" class="btn btn-success btn-lg">Einrichtung abschließen</button>
+                </EditForm>
+                break;
+
+            case 99:
+                <div class="text-center py-4">
+                    <div style="font-size:3rem">🎉</div>
+                    <h2 class="h4">Die Plattform ist einsatzbereit</h2>
+                    <p class="text-muted">Melde dich jetzt mit dem Administrator-Konto an.</p>
+                    <a class="btn btn-primary btn-lg mt-2" href="/login">Zur Anmeldung</a>
+                    <div class="alert alert-info mt-4 text-start">
+                        <strong>Hinweis:</strong> Editoren, Datei-Limits und Branding gelten sofort.
+                        Wurde die <em>Datenbank</em> gewechselt (z. B. SQLite → SQL Server), ist einmalig
+                        ein Neustart der Anwendung nötig.
+                    </div>
+                </div>
+                break;
+        }
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "schritt")] public int? SchrittParam { get; set; }
+    [SupplyParameterFromForm(FormName = "s1")] public Schritt1 S1 { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "s2")] public Schritt2 S2 { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "s3")] public Schritt3 S3 { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "s4")] public Schritt4 S4 { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "s5")] public Schritt5 S5 { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "s6")] public Schritt6 S6 { get; set; } = new();
+
+    private int Schritt => SchrittParam is >= 1 and <= 6 or 99 ? SchrittParam.Value : 1;
+    private string? _fehler;
+    private SetupSettings _entwurf = new();
+    private List<(string Name, bool Ok, string Hinweis)> _pruefungen = new();
+
+    public class Schritt1 { public string OrganizationName { get; set; } = ""; public string PlatformTitle { get; set; } = "Reporting Plattform"; }
+    public class Schritt2
+    {
+        public string DeploymentMode { get; set; } = "onprem";
+        public string AuthMode { get; set; } = "local";
+        public string DatabaseProvider { get; set; } = "sqlite";
+        public string? ConnectionString { get; set; }
+    }
+    public class Schritt3 { public string Email { get; set; } = ""; public string Password { get; set; } = ""; public string PasswordRepeat { get; set; } = ""; }
+    public class Schritt4 { public string Editors { get; set; } = ""; }
+    public class Schritt5
+    {
+        public string BiProvider { get; set; } = "PowerBiService";
+        public string? WorkspaceId { get; set; }
+        public int MaxFileSizeMb { get; set; } = 100;
+        public string Extensions { get; set; } = "pdf, docx, xlsx, pptx, csv, txt, md, png, jpg, jpeg, zip";
+    }
+    public class Schritt6 { public bool CreateDemo { get; set; } = true; }
+
+    // Das Admin-Passwort wird nur für die Dauer der Einrichtung gehalten und nie in setup.json geschrieben.
+    private static string? _adminPasswortTemp;
+
+    protected override void OnInitialized()
+    {
+        _entwurf = SetupSvc.LoadOrNew();
+
+        // Vorbelegung der Formulare aus dem bisherigen Entwurf.
+        if (Schritt == 1 && string.IsNullOrEmpty(S1.OrganizationName))
+        {
+            S1.OrganizationName = _entwurf.OrganizationName;
+            if (!string.IsNullOrWhiteSpace(_entwurf.PlatformTitle)) S1.PlatformTitle = _entwurf.PlatformTitle;
+        }
+        if (Schritt == 6) _pruefungen = Pruefen();
+    }
+
+    private void Speichern1()
+    {
+        _entwurf.OrganizationName = S1.OrganizationName.Trim();
+        _entwurf.PlatformTitle = S1.PlatformTitle.Trim();
+        if (SetupValidation.Organization(_entwurf) is { } f) { _fehler = f; return; }
+        SetupSvc.Save(_entwurf);
+        Nav.NavigateTo("/setup?schritt=2", forceLoad: true);
+    }
+
+    private void Speichern2()
+    {
+        _entwurf.DeploymentMode = S2.DeploymentMode;
+        _entwurf.AuthMode = S2.AuthMode;
+        _entwurf.DatabaseProvider = S2.DatabaseProvider;
+        _entwurf.ConnectionString = S2.ConnectionString?.Trim();
+        if (SetupValidation.Operations(_entwurf) is { } f) { _fehler = f; return; }
+        SetupSvc.Save(_entwurf);
+        Nav.NavigateTo("/setup?schritt=3", forceLoad: true);
+    }
+
+    private void Speichern3()
+    {
+        if (SetupValidation.Administrator(S3.Email, S3.Password, S3.PasswordRepeat) is { } f) { _fehler = f; return; }
+        _entwurf.AdminEmail = S3.Email.Trim().ToLowerInvariant();
+        _adminPasswortTemp = S3.Password;
+        SetupSvc.Save(_entwurf);
+        Nav.NavigateTo("/setup?schritt=4", forceLoad: true);
+    }
+
+    private void Speichern4()
+    {
+        var liste = SetupValidation.SplitList(S4.Editors);
+        if (!string.IsNullOrWhiteSpace(_entwurf.AdminEmail) && !liste.Contains(_entwurf.AdminEmail))
+            liste.Insert(0, _entwurf.AdminEmail);
+        _entwurf.EditorAllowlist = liste;
+        SetupSvc.Save(_entwurf);
+        Nav.NavigateTo("/setup?schritt=5", forceLoad: true);
+    }
+
+    private void Speichern5()
+    {
+        var ext = SetupValidation.SplitList(S5.Extensions);
+        if (SetupValidation.Files(S5.MaxFileSizeMb, ext) is { } f) { _fehler = f; return; }
+        _entwurf.BiProvider = S5.BiProvider;
+        _entwurf.PowerBiWorkspaceId = string.IsNullOrWhiteSpace(S5.WorkspaceId) ? null : S5.WorkspaceId.Trim();
+        _entwurf.MaxFileSizeMb = S5.MaxFileSizeMb;
+        _entwurf.AllowedExtensions = ext;
+        SetupSvc.Save(_entwurf);
+        Nav.NavigateTo("/setup?schritt=6", forceLoad: true);
+    }
+
+    private async Task Abschliessen()
+    {
+        if (string.IsNullOrWhiteSpace(_entwurf.AdminEmail))
+        {
+            _fehler = "Es wurde kein Administrator-Konto festgelegt. Bitte Schritt 3 ausfüllen.";
+            return;
+        }
+
+        // Admin anlegen, falls noch nicht vorhanden (Passwort nur gehasht in der DB).
+        var vorhanden = await Db.Users.AnyAsync(u => u.Email == _entwurf.AdminEmail);
+        if (!vorhanden)
+        {
+            if (string.IsNullOrEmpty(_adminPasswortTemp))
+            {
+                _fehler = "Das Passwort ist nicht mehr verfügbar. Bitte Schritt 3 erneut ausfüllen.";
+                return;
+            }
+            await Users.CreateAsync(_entwurf.AdminEmail, "Administrator", _adminPasswortTemp, PlatformRole.Admin);
+        }
+
+        if (S6.CreateDemo && !await Db.ProjectSpaces.AnyAsync())
+        {
+            var raum = new ProjectSpace { Name = "Beispielprojekt", Slug = "beispielprojekt" };
+            Db.ProjectSpaces.Add(raum);
+            Db.AccessEntries.Add(new AccessEntry
+            {
+                ProjectSpaceId = raum.Id,
+                SubjectType = AccessSubjectType.InternalUser,
+                Subject = _entwurf.AdminEmail,
+                Role = ProjectRole.Owner,
+            });
+            await Db.SaveChangesAsync();
+        }
+
+        _entwurf.CreateDemoProject = S6.CreateDemo;
+        _entwurf.IsCompleted = true;
+        _entwurf.CompletedAt = DateTimeOffset.UtcNow;
+        SetupSvc.Save(_entwurf);
+        _adminPasswortTemp = null;
+
+        Nav.NavigateTo("/setup?schritt=99", forceLoad: true);
+    }
+
+    private List<(string, bool, string)> Pruefen()
+    {
+        var liste = new List<(string, bool, string)>();
+
+        try
+        {
+            var ok = Db.Database.CanConnect();
+            liste.Add(("Datenbank erreichbar", ok, ok ? "OK" : "Verbindung prüfen"));
+        }
+        catch (Exception ex)
+        {
+            liste.Add(("Datenbank erreichbar", false, ex.GetType().Name));
+        }
+
+        try
+        {
+            var dir = Path.Combine(AppContext.BaseDirectory, "data");
+            Directory.CreateDirectory(dir);
+            var probe = Path.Combine(dir, ".probe");
+            File.WriteAllText(probe, "ok");
+            File.Delete(probe);
+            liste.Add(("Datenverzeichnis beschreibbar", true, "OK"));
+        }
+        catch (Exception ex)
+        {
+            liste.Add(("Datenverzeichnis beschreibbar", false, ex.GetType().Name));
+        }
+
+        liste.Add(("Virenscan für Uploads", false, "Entwicklungs-Stub – vor Produktivbetrieb ClamAV anbinden"));
+        liste.Add(("Power-BI-Einbettung", false, "Wird in einer späteren Ausbaustufe aktiviert"));
+
+        return liste;
+    }
+}

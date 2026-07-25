@@ -42,11 +42,21 @@ public static class ServiceCollectionExtensions
         services.AddScoped<Auth.LocalUserService>();
         services.AddScoped<Files.FileLibraryService>();
 
-        // Upload-Regeln: Typ-Whitelist + Größen-Limit (§ 9.6), per Config übersteuerbar.
-        var allowedExt = config.GetSection("Files:AllowedExtensions").Get<string[]>()
-            ?? new[] { "pdf", "docx", "xlsx", "pptx", "csv", "txt", "md", "png", "jpg", "jpeg", "zip" };
-        var maxMb = config.GetValue<long?>("Files:MaxSizeMb") ?? 100;
-        services.AddSingleton(new Core.Services.FileValidation(allowedExt, maxMb * 1024 * 1024));
+        // Upload-Regeln: Typ-Whitelist + Größen-Limit (§ 9.6).
+        // Scoped + Live-Lesen aus setup.json, damit Änderungen des Einrichtungs-Assistenten
+        // sofort greifen (ohne Neustart).
+        services.AddScoped(sp =>
+        {
+            var saved = sp.GetService<Setup.SetupService>()?.Load();
+            var ext = saved is { IsCompleted: true, AllowedExtensions.Count: > 0 }
+                ? saved.AllowedExtensions.ToArray()
+                : config.GetSection("Files:AllowedExtensions").Get<string[]>()
+                  ?? new[] { "pdf", "docx", "xlsx", "pptx", "csv", "txt", "md", "png", "jpg", "jpeg", "zip" };
+            var maxMb = saved is { IsCompleted: true } && saved.MaxFileSizeMb > 0
+                ? saved.MaxFileSizeMb
+                : (int)(config.GetValue<long?>("Files:MaxSizeMb") ?? 100);
+            return new Core.Services.FileValidation(ext, maxMb * 1024L * 1024L);
+        });
 
         services.AddSingleton<ISecretStore, EnvSecretStore>();
 
