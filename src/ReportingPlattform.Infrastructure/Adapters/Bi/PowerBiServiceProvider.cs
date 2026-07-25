@@ -27,6 +27,11 @@ public sealed partial class PowerBiServiceProvider : IBiProvider
         if (url.Contains("/view?r=", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("„Publish to web\"-Links sind aus Sicherheitsgründen nicht erlaubt.");
 
+        // Nur Links aus dem Power-BI-Dienst annehmen. Ohne diese Prüfung würde aus einem
+        // Fremd-Link stillschweigend eine Report-Id gelesen und ein anderer Report angezeigt.
+        if (!IsPowerBiHost(url))
+            throw new InvalidOperationException("Nur Report-Links aus dem Power-BI-Dienst (powerbi.com) sind erlaubt.");
+
         var m = GroupReportRegex().Match(url);
         if (m.Success)
             return new BiReportRef(m.Groups["ws"].Value, m.Groups["rep"].Value);
@@ -38,9 +43,34 @@ public sealed partial class PowerBiServiceProvider : IBiProvider
         throw new InvalidOperationException("Aus dem Link ließen sich keine Report-IDs ermitteln.");
     }
 
+    /// <summary>
+    /// Aktuell: <b>Secure Embed</b> („Einbetten für die Organisation") per iframe — der Report
+    /// rendert mit der Identität des im Browser angemeldeten Power-BI-Nutzers, dessen
+    /// Berechtigungen und RLS greifen. Kein Service Principal, kein „publish to web".
+    /// Die URL wird ausschließlich aus den validierten IDs gebaut, nie aus der Eingabe.
+    /// Später (Phase 7): OBO-Token für vollen JS-Embed bzw. App-owns-data für Gäste.
+    /// </summary>
     public Task<BiEmbedConfig> GetEmbedConfigAsync(BiReportRef report, EmbedContext ctx, CancellationToken ct = default)
     {
-        // TODO Phase 7: ctx.IsEntraUser ? OBO/„user owns data" : Service-Principal/„app owns data".
-        throw new NotImplementedException("Power-BI-Embed-Token-Flow wird in Phase 7 implementiert.");
+        if (!IsGuid(report.ReportId))
+            throw new InvalidOperationException("Ungültige Report-Id.");
+
+        var url = $"https://app.powerbi.com/reportEmbed?reportId={report.ReportId}";
+        if (IsGuid(report.WorkspaceId))
+            url += $"&groupId={report.WorkspaceId}";
+
+        return Task.FromResult(new BiEmbedConfig(url, Mode: "iframe"));
+    }
+
+    private static bool IsGuid(string? value) => Guid.TryParse(value, out _);
+
+    /// <summary>Akzeptiert nur https-Links auf powerbi.com (inkl. Subdomains wie app./msit.).</summary>
+    private static bool IsPowerBiHost(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+        if (uri.Scheme != Uri.UriSchemeHttps) return false;
+        var host = uri.Host;
+        return host.Equals("powerbi.com", StringComparison.OrdinalIgnoreCase)
+               || host.EndsWith(".powerbi.com", StringComparison.OrdinalIgnoreCase);
     }
 }

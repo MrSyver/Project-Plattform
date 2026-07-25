@@ -71,12 +71,22 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAuditSink, LoggerAuditSink>();
         services.AddSingleton<IDbConnector, ReadOnlySqlConnector>();
 
-        // BI-Adapter nach Konfiguration (Cloud: PowerBiService | On-Prem: PowerBiReportServer folgt).
-        var biProvider = config["Bi:Provider"] ?? "PowerBiService";
-        services.AddSingleton<IBiProvider>(_ => biProvider switch
+        // BI-Adapter nach Konfiguration: Cloud = Power BI Service, On-Prem = Report Server (§ 8.1).
+        services.AddScoped<IBiProvider>(sp =>
         {
-            "PowerBiService" => new PowerBiServiceProvider(),
-            _ => new PowerBiServiceProvider(),
+            var saved = sp.GetService<Setup.SetupService>()?.Load();
+            var kind = saved is { IsCompleted: true } && !string.IsNullOrWhiteSpace(saved.BiProvider)
+                ? saved.BiProvider
+                : config["Bi:Provider"] ?? "PowerBiService";
+
+            if (string.Equals(kind, "PowerBiReportServer", StringComparison.OrdinalIgnoreCase))
+            {
+                var baseUrl = config["Bi:ReportServerUrl"];
+                if (!string.IsNullOrWhiteSpace(baseUrl))
+                    return new PowerBiReportServerProvider(baseUrl);
+                // Ohne Basis-URL ist der On-Prem-Adapter nicht nutzbar → Cloud-Adapter als Rückfall.
+            }
+            return new PowerBiServiceProvider();
         });
 
         return services;

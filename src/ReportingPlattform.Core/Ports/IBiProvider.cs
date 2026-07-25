@@ -6,8 +6,14 @@ public record BiReportRef(string WorkspaceId, string ReportId);
 /// <summary>Kontext für die Embed-Strategie-Wahl (Technische Doku § 4.2).</summary>
 public record EmbedContext(string? UserId, bool IsEntraUser, IReadOnlyList<string> RlsRoles);
 
-/// <summary>Fertige Embed-Konfiguration für das Frontend.</summary>
-public record BiEmbedConfig(string EmbedUrl, string? Token, string TokenType);
+/// <summary>
+/// Fertige Embed-Konfiguration für das Frontend.
+/// <paramref name="EmbedUrl"/> wird IMMER serverseitig aus den IDs gebaut — nie aus einer
+/// Nutzereingabe übernommen (sonst ließe sich beliebiger Fremdinhalt einbetten).
+/// <paramref name="Mode"/>: "iframe" (Secure Embed, Identität des angemeldeten Nutzers)
+/// oder "js" (Embed-Token via OBO/Service Principal, spätere Ausbaustufe).
+/// </summary>
+public record BiEmbedConfig(string EmbedUrl, string Mode, string? Token = null, string? TokenType = null);
 
 /// <summary>
 /// Port für Power BI. Cloud-Adapter: Power BI Service (Embedded, OBO/SP);
